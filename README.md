@@ -1,6 +1,8 @@
 # SeriesCarEsp32
 Coleção de software para placa CarESP32
 
+![Placa CarEsp32](caresp32.png)
+
 CarEsp32 é uma placa shield para ESP32 Deve Kit v1 30 pinos
 
 * Pinos
