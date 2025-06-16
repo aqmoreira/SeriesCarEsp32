@@ -22,6 +22,6 @@ SW4 - 34
 
 # Exemplos
 
-* BLE
-   [BLECARESP32]
+* [Exemplos Blutooth](BLECARESP32/README.md)
+  
 
