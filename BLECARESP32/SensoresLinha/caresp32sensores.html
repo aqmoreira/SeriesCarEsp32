@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitorar Carro ESP32 BLE</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #e0f2f7; /* Um azul claro suave */
+            margin: 0;
+            line-height: 1.6;
+            color: #333;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+            text-align: center;
+            width: 90%;
+            max-width: 550px;
+            border: 1px solid #cce7ee;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 25px;
+            font-size: 2.2em;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        p {
+            margin: 8px 0;
+            font-size: 1.1em;
+        }
+        button {
+            background-color: #3498db; /* Azul primário */
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            margin: 10px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        button:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background-color: #bdc3c7; /* Cinza claro para desabilitado */
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+        #status {
+            margin-top: 25px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #555;
+        }
+        #deviceName {
+            margin-top: 8px;
+            font-size: 1em;
+            color: #777;
+        }
+        #ledStatus {
+            margin-top: 15px;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+        }
+        #disconnectButton {
+            background-color: #e74c3c; /* Vermelho vibrante */
+        }
+        #disconnectButton:hover {
+            background-color: #c0392b;
+        }
+        #sensorStatus {
+            display: flex;
+            justify-content: center;
+            gap: 15px; /* Mais espaço entre os sensores */
+            margin-top: 20px;
+            margin-bottom: 25px;
+            padding: 10px;
+            background-color: #ecf0f1; /* Fundo suave para os sensores */
+            border-radius: 8px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .sensor-box {
+            width: 45px;
+            height: 45px;
+            border: 2px solid #95a5a6; /* Borda cinza para inativo */
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #7f8c8d; /* Texto cinza para inativo */
+            background-color: #ffffff;
+            transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+        }
+        .sensor-box.active {
+            background-color: #2c3e50; /* Preto forte para indicar na linha */
+            color: white;
+            border-color: #1a242c;
+            box-shadow: 0 0 10px rgba(44, 62, 80, 0.5); /* Sombra para destaque */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Monitorar Carro ESP32 BLE</h1>
+        
+        <p id="status">Desconectado</p>
+        <p id="deviceName"></p>
+        
+        <button id="connectButton">Conectar ao ESP32</button>
+        <button id="disconnectButton" disabled>Desconectar</button>
+
+        <h2>Sensores de Linha</h2>
+        <div id="sensorStatus">
+            <div class="sensor-box" id="sensor1">1</div>
+            <div class="sensor-box" id="sensor2">2</div>
+            <div class="sensor-box" id="sensor3">3</div>
+            <div class="sensor-box" id="sensor4">4</div>
+            <div class="sensor-box" id="sensor5">5</div>
+        </div>
+
+        <h2>Controle de LED</h2>
+        <p id="ledStatus">LED: Desligado</p>
+        
+        <button id="turnOnButton" disabled>Ligar LED</button>
+        <button id="turnOffButton" disabled>Desligar LED</button>
+    </div>
+
+    <script>
+    // UUIDs devem ser os mesmos do código do ESP32, mas em minúsculas
+    const SERVICE_UUID = "4fafcd20-178d-460b-ae94-d962b28b36ec";
+    const LED_CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    const SENSOR_CHARACTERISTIC_UUID = "a0b1c2d3-e4f5-6789-0123-456789abcdef";
+
+    let device;
+    let ledCharacteristic;
+    let sensorCharacteristic;
+
+    const statusElement = document.getElementById('status');
+    const deviceNameElement = document.getElementById('deviceName');
+    const ledStatusElement = document.getElementById('ledStatus');
+    const connectButton = document.getElementById('connectButton');
+    const disconnectButton = document.getElementById('disconnectButton');
+    const turnOnButton = document.getElementById('turnOnButton');
+    const turnOffButton = document.getElementById('turnOffButton');
+
+    // Referências aos elementos dos sensores
+    const sensorBoxes = [];
+    for (let i = 1; i <= 5; i++) {
+        sensorBoxes.push(document.getElementById(`sensor${i}`));
+    }
+
+    // --- Funções Auxiliares (movidas para o início) ---
+
+    // Função para atualizar o status do LED na UI
+    function updateLEDStatus(value) {
+        if (value === "1") {
+            ledStatusElement.textContent = "LED: Ligado";
+            ledStatusElement.style.color = "green";
+        } else if (value === "0") {
+            ledStatusElement.textContent = "LED: Desligado";
+            ledStatusElement.style.color = "red";
+        } else {
+            ledStatusElement.textContent = "LED: Estado Desconhecido";
+            ledStatusElement.style.color = "orange";
+        }
+    }
+
+    // Função para atualizar a exibição dos sensores na UI
+    function updateSensorDisplay(sensorString) {
+        if (sensorString.length !== 5) {
+            console.warn("Dados do sensor inesperados:", sensorString);
+            return;
+        }
+        for (let i = 0; i < 5; i++) {
+            if (sensorString[i] === '1') {
+                sensorBoxes[i].classList.add('active'); // Adiciona classe para estilizar
+            } else {
+                sensorBoxes[i].classList.remove('active'); // Remove classe
+            }
+        }
+    }
+
+    // Função para lidar com notificações dos sensores
+    function handleSensorNotifications(event) {
+        const value = event.target.value;
+        const sensorData = new TextDecoder().decode(value);
+        console.log("Dados do sensor recebidos:", sensorData);
+        updateSensorDisplay(sensorData);
+    }
+
+    // Função chamada quando o dispositivo BLE é desconectado
+    function onDisconnected() {
+        statusElement.textContent = "Desconectado";
+        deviceNameElement.textContent = ""; // Limpa o nome do dispositivo
+        ledStatusElement.textContent = "LED: Desligado";
+        ledStatusElement.style.color = "#333";
+        connectButton.disabled = false;
+        disconnectButton.disabled = true; // Desabilita o botão de desconectar
+        turnOnButton.disabled = true;
+        turnOffButton.disabled = true;
+        updateSensorDisplay("00000"); // Reseta a exibição dos sensores
+        console.log("ESP32 desconectado!");
+        device = null;
+        ledCharacteristic = null;
+        sensorCharacteristic = null; // Limpa a referência da característica do sensor
+    }
+
+    // --- Fim das Funções Auxiliares ---
+
+
+    // Adiciona event listeners aos botões
+    connectButton.addEventListener('click', connectToESP32);
+    disconnectButton.addEventListener('click', disconnectFromESP32);
+    turnOnButton.addEventListener('click', () => writeLEDValue('1'));
+    turnOffButton.addEventListener('click', () => writeLEDValue('0'));
+
+    async function connectToESP32() {
+        try {
+            statusElement.textContent = "Procurando ESP32...";
+            connectButton.disabled = true;
+            disconnectButton.disabled = true;
+            
+            // Solicita ao navegador para escanear dispositivos BLE
+            device = await navigator.bluetooth.requestDevice({
+                filters: [{ services: [SERVICE_UUID] }],
+                optionalServices: [SERVICE_UUID]
+            });
+
+            // Exibe o nome do dispositivo enquanto tenta conectar
+            deviceNameElement.textContent = `Dispositivo: ${device.name || 'Desconhecido'}`;
+            statusElement.textContent = `Conectando a ${device.name || 'Dispositivo Desconhecido'}...`;
+
+            // Adiciona um ouvinte para o evento de desconexão
+            device.addEventListener('gattserverdisconnected', onDisconnected);
+
+            // Conecta ao servidor GATT do dispositivo
+            const server = await device.gatt.connect();
+            statusElement.textContent = "Conectado!";
+            disconnectButton.disabled = false; // Habilita o botão de desconectar
+            
+            // Obtém o serviço
+            const service = await server.getPrimaryService(SERVICE_UUID);
+
+            // Característica do LED
+            ledCharacteristic = await service.getCharacteristic(LED_CHARACTERISTIC_UUID);
+            turnOnButton.disabled = false;
+            turnOffButton.disabled = false;
+            const ledValue = await ledCharacteristic.readValue();
+            updateLEDStatus(new TextDecoder().decode(ledValue)); // CHAMA updateLEDStatus AQUI
+
+            // Característica dos Sensores
+            sensorCharacteristic = await service.getCharacteristic(SENSOR_CHARACTERISTIC_UUID);
+            // Inscreve-se para notificações da característica dos sensores
+            await sensorCharacteristic.startNotifications();
+            sensorCharacteristic.addEventListener('characteristicvaluechanged', handleSensorNotifications); // CHAMA handleSensorNotifications AQUI
+            console.log("Inscrito em notificações dos sensores.");
+
+        } catch (error) {
+            console.error("Erro ao conectar ou interagir com BLE:", error);
+            statusElement.textContent = `Erro: ${error.message}`;
+            deviceNameElement.textContent = ""; // Limpa o nome do dispositivo em caso de erro
+            connectButton.disabled = false;
+            disconnectButton.disabled = true;
+            turnOnButton.disabled = true;
+            turnOffButton.disabled = true;
+            updateSensorDisplay("00000"); // Reseta os sensores em caso de erro
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
+            }
+        }
+    }
+
+    async function disconnectFromESP32() {
+        if (device && device.gatt.connected) {
+            console.log("Desconectando do ESP32...");
+            // Para de receber notificações antes de desconectar
+            if (sensorCharacteristic) {
+                try {
+                    await sensorCharacteristic.stopNotifications();
+                    sensorCharacteristic.removeEventListener('characteristicvaluechanged', handleSensorNotifications);
+                    console.log("Notificações dos sensores paradas.");
+                } catch (error) {
+                    console.warn("Erro ao parar notificações:", error);
+                }
+            }
+            device.gatt.disconnect();
+        } else {
+            console.log("Nenhum dispositivo conectado para desconectar.");
+            onDisconnected(); // Reseta o estado da UI se já não estava conectado
+        }
+    }
+
+    async function writeLEDValue(value) {
+        if (!ledCharacteristic) {
+            alert("Não conectado ao ESP32. Por favor, conecte primeiro.");
+            return;
+        }
+        try {
+            await ledCharacteristic.writeValue(new TextEncoder().encode(value));
+            updateLEDStatus(value);
+            console.log(`Valor '${value}' escrito na característica.`);
+        } catch (error) {
+            console.error("Erro ao escrever na característica do LED:", error);
+            alert("Erro ao enviar comando para o LED. Tente reconectar.");
+            if (device && device.gatt.connected) {
+                device.gatt.disconnect();
+            }
+        }
+    }
+
+    // Verifica se o Web Bluetooth é suportado no carregamento da página
+    if ('bluetooth' in navigator) {
+        console.log("Web Bluetooth API suportado.");
+        statusElement.textContent = "Pronto para conectar.";
+    } else {
+        statusElement.textContent = "Web Bluetooth API NÃO suportado neste navegador. Use Chrome ou Edge.";
+        connectButton.disabled = true;
+    }
+
+</script>
+</body>
+</html>
