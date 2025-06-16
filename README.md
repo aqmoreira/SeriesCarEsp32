@@ -20,4 +20,8 @@ SW3 - 39
 SW4 - 34  
 
 
+# Exemplos
+
+* BLE
+   [BLECARESP32]
 
