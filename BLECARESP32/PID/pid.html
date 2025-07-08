@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ajuste Velocidade e Constantes PID - ESP32 BLE</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f8f9fa;
+            margin: 0;
+            line-height: 1.6;
+            color: #343a40;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 35px;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 500px; /* Reduzido um pouco para ser mais compacto */
+            border: 1px solid #dee2e6;
+        }
+        h1 {
+            color: #007bff;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.05);
+        }
+        h2 {
+            color: #343a40;
+            margin-top: 35px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 8px;
+            font-size: 1.8em;
+        }
+        p {
+            margin: 10px 0;
+            font-size: 1.1em;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            margin: 10px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+        }
+        button:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+        #status {
+            margin-top: 25px;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #555;
+        }
+        #deviceName {
+            margin-top: 8px;
+            font-size: 1.1em;
+            color: #777;
+        }
+        
+        #disconnectButton {
+            background-color: #dc3545;
+        }
+        #disconnectButton:hover {
+            background-color: #c82333;
+        }
+        .control-group {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .control-group input[type="number"] {
+            padding: 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            width: 100px;
+            font-size: 1.1em;
+            text-align: center;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .pid-values {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 450px;
+            margin-top: 20px;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #343a40;
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: inset 0 1px 5px rgba(0,0,0,0.08);
+        }
+        .pid-values div {
+            flex: 1;
+            padding: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Ajuste de Constantes PID - ESP32</h1>
+        
+        <p id="status">Desconectado</p>
+        <p id="deviceName"></p>
+        
+        <button id="connectButton">Conectar ao ESP32</button>
+        <button id="disconnectButton" disabled>Desconectar</button>
+
+        <h2>Controle PID</h2>
+        <div class="pid-values">
+            <div>Kp: <span id="currentKp">--</span></div>
+            <div>Ki: <span id="currentKi">--</span></div>
+            <div>Kd: <span id="currentKd">--</span></div>
+            <div>Velocidade: <span id="currentSpeed">--</span></div>
+        </div>
+        <div class="control-group">
+           <div>
+            Kp: <input type="number" id="kpInput" step="0.1" value="10.0">
+            Ki: <input type="number" id="kiInput" step="0.01" value="0.0">
+           </div>
+           <div>    
+            Kd: <input type="number" id="kdInput" step="0.1" value="2.0">
+            Velocidade: <input type="number" id="speedInput" step="0.1" value="150">
+            </div>
+            <button id="setPidButton" disabled>Aplicar PID</button>
+        </div>
+
+       
+    </div>
+
+    <script>
+        // UUIDs devem ser os mesmos do código do ESP32, mas em minúsculas
+        const SERVICE_UUID = "4fafcd20-178d-460b-ae94-d962b28b36ec";
+        const KP_CHARACTERISTIC_UUID = "c0d1e2f3-a4b5-6789-0123-456789abcdef";
+        const KI_CHARACTERISTIC_UUID = "d0e1f2a3-b4c5-6789-0123-456789abcdef";
+        const KD_CHARACTERISTIC_UUID = "e0f1a2b3-c4d5-6789-0123-456789abcdef";
+        const SPEED_CHARACTERISTIC_UUID = "f0c1d2e3-f4a5-6789-0123-456789abcdef";
+
+
+        let device;
+        let kpCharacteristic;
+        let kiCharacteristic;
+        let kdCharacteristic;
+        
+        let speedCharacteristic;
+
+        const statusElement = document.getElementById('status');
+        const deviceNameElement = document.getElementById('deviceName');
+        const connectButton = document.getElementById('connectButton');
+        const disconnectButton = document.getElementById('disconnectButton');
+        
+        const currentKpElement = document.getElementById('currentKp');
+        const currentKiElement = document.getElementById('currentKi');
+        const currentKdElement = document.getElementById('currentKd');
+        const currentSpeedElement = document.getElementById('currentSpeed');
+
+        const kpInput = document.getElementById('kpInput');
+        const kiInput = document.getElementById('kiInput');
+        const kdInput = document.getElementById('kdInput');
+        const speedInput = document.getElementById('speedInput');
+        const setPidButton = document.getElementById('setPidButton');
+
+        // --- Funções Auxiliares (movidas para o início para garantir o hoisting) ---
+
+        function updateKpDisplay(kp) {
+            currentKpElement.textContent = parseFloat(kp).toFixed(1);
+        }
+        function updateKiDisplay(ki) {
+            currentKiElement.textContent = parseFloat(ki).toFixed(2);
+        }
+        function updateKdDisplay(kd) {
+            currentKdElement.textContent = parseFloat(kd).toFixed(1);
+        }
+
+        function updateSpeedDisplay(speed) {
+            currentSpeedElement.textContent = parseFloat(speed).toFixed(1);
+        }
+
+       
+
+        function handleKpNotifications(event) {
+            const value = event.target.value;
+            const kpData = new TextDecoder().decode(value);
+            console.log("Kp recebido:", kpData);
+            updateKpDisplay(kpData);
+        }
+        function handleKiNotifications(event) {
+            const value = event.target.value;
+            const kiData = new TextDecoder().decode(value);
+            console.log("Ki recebido:", kiData);
+            updateKiDisplay(kiData);
+        }
+        function handleKdNotifications(event) {
+            const value = event.target.value;
+            const kdData = new TextDecoder().decode(value);
+            console.log("Kd recebido:", kdData);
+            updateKdDisplay(kdData);
+        }
+
+        
+        function handleSpeedNotifications(event) {
+            const value = event.target.value;
+            const speedData = new TextDecoder().decode(value);
+            console.log("Speed recebido:", speedData);
+            updateSpeedDisplay(speedData);
+        }
+
+        function onDisconnected() {
+            statusElement.textContent = "Desconectado";
+            deviceNameElement.textContent = ""; 
+            currentKpElement.textContent = "--";
+            currentKiElement.textContent = "--";
+            currentKdElement.textContent = "--";
+            currentSpeedElement.textContent = "--";
+           
+
+            connectButton.disabled = false;
+            disconnectButton.disabled = true;
+            setPidButton.disabled = true;
+            kpInput.disabled = true;
+            kiInput.disabled = true;
+            kdInput.disabled = true;
+            speedInput.disabled = true;
+
+            console.log("ESP32 desconectado!");
+            device = null;
+            kpCharacteristic = null;
+            kiCharacteristic = null;
+            kdCharacteristic = null;
+            speedCharacteristic = null;
+           
+        }
+
+        // --- Fim das Funções Auxiliares ---
+
+        // Adiciona event listeners aos botões
+        connectButton.addEventListener('click', connectToESP32);
+        disconnectButton.addEventListener('click', disconnectFromESP32);
+        setPidButton.addEventListener('click', setPidValues);
+
+        async function connectToESP32() {
+            try {
+                statusElement.textContent = "Procurando ESP32...";
+                connectButton.disabled = true;
+                disconnectButton.disabled = true;
+                
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                deviceNameElement.textContent = `Dispositivo: ${device.name || 'Desconhecido'}`;
+                statusElement.textContent = `Conectando a ${device.name || 'Desconhecido'}...`;
+
+                const server = await device.gatt.connect();
+
+                if (!server.connected) {
+                    throw new Error("GATT Server não conectado após 'connect()'.");
+                }
+
+                statusElement.textContent = "Conectado!";
+                disconnectButton.disabled = false;
+                
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+
+                const service = await server.getPrimaryService(SERVICE_UUID);
+
+                // Características PID (com delays para estabilidade)
+                kpCharacteristic = await service.getCharacteristic(KP_CHARACTERISTIC_UUID);
+                await kpCharacteristic.startNotifications();
+                kpCharacteristic.addEventListener('characteristicvaluechanged', handleKpNotifications);
+                const kpValue = await kpCharacteristic.readValue();
+                updateKpDisplay(new TextDecoder().decode(kpValue));
+
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+                kiCharacteristic = await service.getCharacteristic(KI_CHARACTERISTIC_UUID);
+                await kiCharacteristic.startNotifications();
+                kiCharacteristic.addEventListener('characteristicvaluechanged', handleKiNotifications);
+                const kiValue = await kiCharacteristic.readValue();
+                updateKiDisplay(new TextDecoder().decode(kiValue));
+
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+                speedCharacteristic = await service.getCharacteristic(SPEED_CHARACTERISTIC_UUID);
+                await speedCharacteristic.startNotifications();
+                speedCharacteristic.addEventListener('characteristicvaluechanged', handleSpeedNotifications);
+                const speedValue = await speedCharacteristic.readValue();
+                updateSpeedDisplay(new TextDecoder().decode(speedValue));
+
+      
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+                kdCharacteristic = await service.getCharacteristic(KD_CHARACTERISTIC_UUID);
+                await kdCharacteristic.startNotifications();
+                kdCharacteristic.addEventListener('characteristicvaluechanged', handleKdNotifications);
+                const kdValue = await kdCharacteristic.readValue();
+                updateKdDisplay(new TextDecoder().decode(kdValue));
+
+
+               
+
+                console.log("Inscrito em notificações PID.");
+                setPidButton.disabled = false;
+                kpInput.disabled = false;
+                kiInput.disabled = false;
+                kdInput.disabled = false;
+                speedInput.disabled = false;
+
+               
+                
+
+            } catch (error) {
+                console.error(error);
+                console.error("Erro ao conectar ou interagir com BLE:", error);
+                statusElement.textContent = `Erro: ${error.message}`;
+                if (device && error.name !== 'NotFoundError' && error.message.indexOf('User cancelled') === -1) {
+                    if (device.gatt && device.gatt.connected) {
+                        device.gatt.disconnect();
+                    } else {
+                        onDisconnected(); 
+                    }
+                } else if (!device) { 
+                    onDisconnected();
+                }
+            }
+        }
+
+        async function disconnectFromESP32() {
+            if (device && device.gatt.connected) {
+                console.log("Desconectando do ESP32...");
+                
+                // Para todas as notificações relevantes
+                if (kpCharacteristic) await kpCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. Kp:", e));
+                if (kiCharacteristic) await kiCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. Ki:", e));
+                if (kdCharacteristic) await kdCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. Kd:", e));
+                if (speedCharacteristic) await speedCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. erro:", e));
+
+                // Remove event listeners
+                if (kpCharacteristic) kpCharacteristic.removeEventListener('characteristicvaluechanged', handleKpNotifications);
+                if (kiCharacteristic) kiCharacteristic.removeEventListener('characteristicvaluechanged', handleKiNotifications);
+                if (kdCharacteristic) kdCharacteristic.removeEventListener('characteristicvaluechanged', handleKdNotifications);
+                if (speedCharacteristic) speedCharacteristic.removeEventListener('characteristicvaluechanged', handleSpeedNotifications);
+
+                device.gatt.disconnect();
+            } else {
+                console.log("Nenhum dispositivo conectado para desconectar.");
+                onDisconnected(); 
+            }
+        }
+
+        async function setPidValues() {
+            if (!kpCharacteristic || !kiCharacteristic || !kdCharacteristic || !speedCharacteristic) {
+                alert("Não conectado ao ESP32. Por favor, conecte primeiro.");
+                return;
+            }
+
+            let kp = parseFloat(kpInput.value);
+            let ki = parseFloat(kiInput.value);
+            let kd = parseFloat(kdInput.value);
+            let speed = parseFloat(speedInput.value);
+
+            if (isNaN(kp) || isNaN(ki) || isNaN(kd) || isNaN(speed)) {
+                alert("Por favor, insira valores numéricos válidos para Kp, Ki, Kd e Velocidade");
+                return;
+            }
+
+            try {
+                await kpCharacteristic.writeValue(new TextEncoder().encode(String(kp)));
+                await kiCharacteristic.writeValue(new TextEncoder().encode(String(ki)));
+                await kdCharacteristic.writeValue(new TextEncoder().encode(String(kd)));
+                await speedCharacteristic.writeValue(new TextEncoder().encode(String(speed)));
+                console.log(`Kp: ${kp}, Ki: ${ki}, Kd: ${kd}, Speed: ${speed} enviados.`);
+            } catch (error) {
+                console.error("Erro ao definir valores PID:", error);
+                alert("Erro ao enviar constantes PID. Tente reconectar.");
+                if (device && device.gatt.connected) {
+                    device.gatt.disconnect();
+                }
+            }
+        }
+
+        // Verifica se o Web Bluetooth é suportado no carregamento da página
+        if ('bluetooth' in navigator) {
+            console.log("Web Bluetooth API suportado.");
+            statusElement.textContent = "Pronto para conectar.";
+        } else {
+            statusElement.textContent = "Web Bluetooth API NÃO suportado neste navegador. Use Chrome ou Edge.";
+            connectButton.disabled = true;
+        }
+
+    </script>
+</body>
+</html>

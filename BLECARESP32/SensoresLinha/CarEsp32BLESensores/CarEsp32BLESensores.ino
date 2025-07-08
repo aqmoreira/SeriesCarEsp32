@@ -4,8 +4,9 @@
 #include <BLE2902.h>
 #include <CarEsp32.h> // Inclui a biblioteca do seu carro
 
-// Definir o nome do dispositivo BLE
-#define DEVICE_NAME "Carro_BLE_Control" // Nome descritivo para o carro
+// Definir o nome do dispositivo BLE e Tipo linha
+#define DEVICE_NAME "Carro_BLE_Sensores" // Nome  descritivo para o carro
+bool linhaPreta = false;    //cor da linha Preta = true , Branca = False
 
 // UUIDs para o serviço e as características
 #define SERVICE_UUID "4FAFCD20-178D-460B-AE94-D962B28B36EC" // Mantém o do LED
@@ -26,6 +27,7 @@ bool deviceConnected = false;
 int velocidade = 1; // Velocidade máxima 255
 float calibragemMotorA = 1; // Fator de ajuste para calibrar motores para ter aproximadamente a mesma rotação
 float calibragemMotorB = 1; // Fator de ajuste para calibrar motores para ter aproximadamente a mesma rotação
+
 
 CarEsp32 carEsp32; // Variável do Tipo CarEsp32 que é a placa que controla o carro
 
@@ -76,6 +78,7 @@ void setup() {
     carEsp32.ajustarVelocidade(velocidade);
     carEsp32.calibrarMotorA(calibragemMotorA);
     carEsp32.calibrarMotorB(calibragemMotorB);
+    carEsp32.setLinhaCorPreta(linhaPreta);
 
     // Inicializa o dispositivo BLE
     BLEDevice::init(DEVICE_NAME);
@@ -150,34 +153,34 @@ void loop() {
         }
     }
 
-    // Lógica do carro seguidor de linha (mantida do seu código)
+    // Lógica do carro seguidor de linha Bang Bang (S2,S3 S4) - Sensores do meio apenas
     // Adaptações para usar as variáveis booleanas dos sensores diretamente
-    if(s2 == true && s4 == false){
+    if(s2 == false && s4 == true){
         carEsp32.acionarMotorA(true, velocidade);
         carEsp32.acionarMotorB(false, velocidade);
-    } else if(s2 == false && s4 == true){
+    } else if(s2 == true && s4 == false){
         carEsp32.acionarMotorB(true, velocidade);
         carEsp32.acionarMotorA(false, velocidade);
-    } else if(s2 == true && s3 == false && s4 == true){
+    } else if(s2 == false && s3 == true && s4 == false){
         carEsp32.acionarMotor(false, false, velocidade);
-    } else if(!s1 && !s2 && !s3 && !s4 && !s5){
+    } else if(s1 && s2 && s3 && s4 && s5){
         carEsp32.pararMotor();
         delay(100);
     }
     // Considerar adicionar uma lógica "else" final se nenhum dos "if/else if" acima for verdadeiro,
     // para garantir um comportamento padrão do carro, como seguir reto ou parar.
-    // Ex: else { carEsp32.acionarMotor(true, true, velocidade); } // Seguir reto se nenhum desvio for detectado
+    // Ex: else { carEsp32.acionarMotor(false, false, velocidade); } // Seguir reto se nenhum desvio for detectado
 
     // Lógica de velocidade via botões SW (mantida do seu código)
     if(!digitalRead(SW1)){
-        velocidade = 255;
+        velocidade = 160;
         carEsp32.ajustarVelocidade(velocidade);
-        Serial.println("Velocidade Maxima (SW1)");
+        Serial.println("Velocidade 160 (SW1)");
     }
     if(!digitalRead(SW2)){
         velocidade = 170;
         carEsp32.ajustarVelocidade(velocidade);
-        Serial.println("Velocidade Media (SW2)");
+        Serial.println("Velocidade 170 (SW2)");
     }
     if(!digitalRead(SW3)){
         velocidade = 200 ;

@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibragem de Motores - ESP32 BLE</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f0f8ff; /* Um azul bebê suave */
+            margin: 0;
+            line-height: 1.6;
+            color: #333;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 35px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            text-align: center;
+            width: 90%;
+            max-width: 550px;
+            border: 1px solid #c0e0f0;
+        }
+        h1 {
+            color: #0056b3; /* Azul mais escuro */
+            margin-bottom: 30px;
+            font-size: 2.8em;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #007bff;
+            margin-top: 35px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+            font-size: 1.8em;
+        }
+        p {
+            margin: 10px 0;
+            font-size: 1.1em;
+        }
+        button {
+            background-color: #28a745; /* Verde para conectar/iniciar */
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            margin: 10px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: bold;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+        }
+        button:hover {
+            background-color: #218838;
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+        #status {
+            margin-top: 25px;
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #555;
+        }
+        #deviceName {
+            margin-top: 8px;
+            font-size: 1.1em;
+            color: #777;
+        }
+        #disconnectButton {
+            background-color: #dc3545; /* Vermelho para desconectar */
+        }
+        #disconnectButton:hover {
+            background-color: #c82333;
+        }
+        #startButton {
+            background-color: #17a2b8; /* Azul claro para iniciar */
+        }
+        #startButton:hover {
+            background-color: #138496;
+        }
+        #stopButton {
+            background-color: #dc3545; /* Vermelho para parar */
+        }
+        #stopButton:hover {
+            background-color: #c82333;
+        }
+        .input-group {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap; /* Para quebrar linha */
+            gap: 15px; /* Espaço entre os itens */
+            margin-top: 20px;
+        }
+        .input-group label {
+            font-weight: bold;
+            color: #495057;
+            flex-basis: 120px; /* Largura base para labels para alinhar */
+            text-align: right; /* Alinha texto à direita */
+            padding-right: 10px;
+        }
+        .input-group input[type="number"] {
+            padding: 12px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            width: 80px;
+            font-size: 1.1em;
+            text-align: center;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+            flex-grow: 1; /* Permite que o input cresça */
+            max-width: 120px; /* Limita o tamanho máximo do input */
+        }
+        .input-row { /* Para agrupar label e input */
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .current-values {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            max-width: 400px;
+            margin-top: 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #343a40;
+            background-color: #e9f5f9; /* Fundo mais suave */
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: inset 0 1px 5px rgba(0,0,0,0.08);
+        }
+        .current-values div {
+            flex: 1;
+            padding: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Calibração de Motores ESP32</h1>
+        
+        <p id="status">Desconectado</p>
+        <p id="deviceName"></p>
+        
+        <button id="connectButton">Conectar ao ESP32</button>
+        <button id="disconnectButton" disabled>Desconectar</button>
+
+        <h2>Valores Atuais</h2>
+        <div class="current-values">
+            <div>Motor Direito (A): <span id="currentMotorDireitoSpeed">--</span></div>
+            <div>Motor Esquerdo (B): <span id="currentMotorEsquerdoSpeed">--</span></div>
+            <div>Tempo (ms): <span id="currentTestTime">--</span></div>
+        </div>
+
+        <h2>Configurar Teste</h2>
+        <div class="input-group">
+            <div class="input-row">
+                <label for="motorEsquerdoSpeedInput">Motor Esquerdo (B):</label> 
+                <input type="number" id="motorEsquerdoSpeedInput" min="0" max="255" value="150">
+            </div>
+            <div class="input-row">
+                <label for="motorDireitoSpeedInput">Motor Direito (A):</label> 
+                <input type="number" id="motorDireitoSpeedInput" min="0" max="255" value="150">
+            </div>
+            <div class="input-row" style="width: 100%; justify-content: center;">
+                <label for="testTimeInput">Tempo (ms):</label> 
+                <input type="number" id="testTimeInput" min="100" max="10000" step="100" value="2000">
+            </div>
+        </div>
+        <button id="setParametersButton" disabled>Definir Parâmetros</button>
+
+        <h2>Controle do Teste</h2>
+        <button id="startButton" disabled>Iniciar Teste</button>
+        <button id="stopButton" disabled>Parar Teste</button>
+        <p id="testStatus">Status: Parado</p>
+
+    </div>
+
+    <script>
+        // UUIDs devem ser os mesmos do código do ESP32, mas em minúsculas
+        const SERVICE_UUID = "4fafcd20-178d-460b-ae94-d962b28b36ec";
+        const MOTOR_A_SPEED_CHARACTERISTIC_UUID = "50a1b2c3-d4e5-6789-0123-456789abcdef"; // Motor A (Direito)
+        const MOTOR_B_SPEED_CHARACTERISTIC_UUID = "60f1e2d3-c4b5-6789-0123-456789abcdef"; // Motor B (Esquerdo)
+        const TEST_TIME_CHARACTERISTIC_UUID = "70a1b2c3-d4e5-6789-0123-456789abcdef";
+        const START_STOP_CHARACTERISTIC_UUID = "80f1e2d3-c4b5-6789-0123-456789abcdef";
+
+        let device;
+        let motorASpeedCharacteristic; // Correspondente ao Motor Direito
+        let motorBSpeedCharacteristic; // Correspondente ao Motor Esquerdo
+        let testTimeCharacteristic;
+        let startStopCharacteristic;
+
+        const statusElement = document.getElementById('status');
+        const deviceNameElement = document.getElementById('deviceName');
+        const connectButton = document.getElementById('connectButton');
+        const disconnectButton = document.getElementById('disconnectButton');
+        
+        const currentMotorDireitoSpeedElement = document.getElementById('currentMotorDireitoSpeed');
+        const currentMotorEsquerdoSpeedElement = document.getElementById('currentMotorEsquerdoSpeed');
+        const currentTestTimeElement = document.getElementById('currentTestTime');
+
+        const motorDireitoSpeedInput = document.getElementById('motorDireitoSpeedInput');
+        const motorEsquerdoSpeedInput = document.getElementById('motorEsquerdoSpeedInput');
+        const testTimeInput = document.getElementById('testTimeInput');
+        const setParametersButton = document.getElementById('setParametersButton');
+
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const testStatusElement = document.getElementById('testStatus');
+
+        // --- Funções Auxiliares ---
+
+        function updateMotorDireitoSpeedDisplay(speed) {
+            currentMotorDireitoSpeedElement.textContent = speed;
+            motorDireitoSpeedInput.value = speed; 
+        }
+        function updateMotorEsquerdoSpeedDisplay(speed) {
+            currentMotorEsquerdoSpeedElement.textContent = speed;
+            motorEsquerdoSpeedInput.value = speed; 
+        }
+        function updateTestTimeDisplay(time) {
+            currentTestTimeElement.textContent = time;
+            testTimeInput.value = time; 
+        }
+        function updateTestStatusDisplay(statusValue) { 
+            if (statusValue === "1") {
+                testStatusElement.textContent = "Status: Teste em Andamento...";
+                testStatusElement.style.color = "#17a2b8";
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                setParametersButton.disabled = true; 
+                motorDireitoSpeedInput.disabled = true;
+                motorEsquerdoSpeedInput.disabled = true;
+                testTimeInput.disabled = true;
+            } else {
+                testStatusElement.textContent = "Status: Parado";
+                testStatusElement.style.color = "#dc3545";
+                startButton.disabled = false;
+                stopButton.disabled = true;
+                setParametersButton.disabled = false; 
+                motorDireitoSpeedInput.disabled = false;
+                motorEsquerdoSpeedInput.disabled = false;
+                testTimeInput.disabled = false;
+            }
+        }
+
+        function handleMotorASpeedNotifications(event) {
+            const value = event.target.value;
+            const speedData = new TextDecoder().decode(value);
+            console.log("Motor Direito (A) Speed received:", speedData);
+            updateMotorDireitoSpeedDisplay(speedData);
+        }
+        function handleMotorBSpeedNotifications(event) {
+            const value = event.target.value;
+            const speedData = new TextDecoder().decode(value);
+            console.log("Motor Esquerdo (B) Speed received:", speedData);
+            updateMotorEsquerdoSpeedDisplay(speedData);
+        }
+        function handleTestTimeNotifications(event) {
+            const value = event.target.value;
+            const timeData = new TextDecoder().decode(value);
+            console.log("Test Time received:", timeData);
+            updateTestTimeDisplay(timeData);
+        }
+        function handleStartStopNotifications(event) {
+            const value = event.target.value;
+            const statusData = new TextDecoder().decode(value);
+            console.log("Start/Stop status received:", statusData);
+            updateTestStatusDisplay(statusData);
+        }
+
+        function onDisconnected() {
+            statusElement.textContent = "Desconectado";
+            deviceNameElement.textContent = ""; 
+            currentMotorDireitoSpeedElement.textContent = "--";
+            currentMotorEsquerdoSpeedElement.textContent = "--";
+            currentTestTimeElement.textContent = "--";
+            testStatusElement.textContent = "Status: Parado";
+            testStatusElement.style.color = "#dc3545";
+
+            connectButton.disabled = false;
+            disconnectButton.disabled = true;
+            setParametersButton.disabled = true;
+            startButton.disabled = true;
+            stopButton.disabled = true;
+            motorDireitoSpeedInput.disabled = true;
+            motorEsquerdoSpeedInput.disabled = true;
+            testTimeInput.disabled = true;
+
+            console.log("ESP32 desconectado!");
+            device = null;
+            motorASpeedCharacteristic = null;
+            motorBSpeedCharacteristic = null;
+            testTimeCharacteristic = null;
+            startStopCharacteristic = null;
+        }
+
+        // --- Fim das Funções Auxiliares ---
+
+        // Adiciona event listeners aos botões
+        connectButton.addEventListener('click', connectToESP32);
+        disconnectButton.addEventListener('click', disconnectFromESP32);
+        setParametersButton.addEventListener('click', setMotorParameters);
+        startButton.addEventListener('click', () => writeStartStopCommand('1')); // '1' para iniciar
+        stopButton.addEventListener('click', () => writeStartStopCommand('0'));  // '0' para parar
+
+        async function connectToESP32() {
+            try {
+                statusElement.textContent = "Procurando ESP32...";
+                connectButton.disabled = true;
+                disconnectButton.disabled = true;
+                
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                deviceNameElement.textContent = `Dispositivo: ${device.name || 'Desconhecido'}`;
+                statusElement.textContent = `Conectando a ${device.name || 'Desconhecido'}...`;
+
+                const server = await device.gatt.connect();
+
+                if (!server.connected) {
+                    throw new Error("GATT Server não conectado após 'connect()'.");
+                }
+
+                statusElement.textContent = "Conectado!";
+                disconnectButton.disabled = false;
+                
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+                console.log("Conectado ao GATT Server."); // Log 1
+
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                console.log("Serviço principal obtido."); // Log 2
+
+                // Características de Motor A (Direito), Motor B (Esquerdo) e Tempo
+                motorASpeedCharacteristic = await service.getCharacteristic(MOTOR_A_SPEED_CHARACTERISTIC_UUID);
+                console.log("Característica Motor A (Direito) obtida."); // Log 3
+                await motorASpeedCharacteristic.startNotifications();
+                motorASpeedCharacteristic.addEventListener('characteristicvaluechanged', handleMotorASpeedNotifications);
+                console.log("Notificações Motor A iniciadas."); // Log 4
+                const motorASpeedValue = await motorASpeedCharacteristic.readValue();
+                updateMotorDireitoSpeedDisplay(new TextDecoder().decode(motorASpeedValue));
+                console.log("Valor Motor A lido e exibido."); // Log 5
+
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+
+                motorBSpeedCharacteristic = await service.getCharacteristic(MOTOR_B_SPEED_CHARACTERISTIC_UUID);
+                console.log("Característica Motor B (Esquerdo) obtida."); // Log 6
+                await motorBSpeedCharacteristic.startNotifications();
+                motorBSpeedCharacteristic.addEventListener('characteristicvaluechanged', handleMotorBSpeedNotifications);
+                console.log("Notificações Motor B iniciadas."); // Log 7
+                const motorBSpeedValue = await motorBSpeedCharacteristic.readValue();
+                updateMotorEsquerdoSpeedDisplay(new TextDecoder().decode(motorBSpeedValue));
+                console.log("Valor Motor B lido e exibido."); // Log 8
+                
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+
+                testTimeCharacteristic = await service.getCharacteristic(TEST_TIME_CHARACTERISTIC_UUID);
+                console.log("Característica Tempo de Teste obtida."); // Log 9
+                await testTimeCharacteristic.startNotifications();
+                testTimeCharacteristic.addEventListener('characteristicvaluechanged', handleTestTimeNotifications);
+                console.log("Notificações Tempo de Teste iniciadas."); // Log 10
+                const testTimeValue = await testTimeCharacteristic.readValue();
+                updateTestTimeDisplay(new TextDecoder().decode(testTimeValue));
+                console.log("Valor Tempo de Teste lido e exibido."); // Log 11
+                
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+                 
+                // Característica de Iniciar/Parar Teste (NOTA: Não tem PROPERTY_READ no ESP32)
+                startStopCharacteristic = await service.getCharacteristic(START_STOP_CHARACTERISTIC_UUID);
+                console.log("Característica Start/Stop obtida."); // Log 12
+                await startStopCharacteristic.startNotifications();
+                startStopCharacteristic.addEventListener('characteristicvaluechanged', handleStartStopNotifications);
+                console.log("Notificações Start/Stop iniciadas."); // Log 13
+                // Não há readValue() para startStopCharacteristic pois não possui PROPERTY_READ no ESP32.
+                // O estado inicial será "0" e atualizado via notificação se houver mudança.
+                updateTestStatusDisplay("0"); // Define o status inicial como "Parado" na UI.
+                
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+
+                console.log("Todas as características de Calibracao de Motor processadas."); // Log 14
+                setParametersButton.disabled = false;
+                startButton.disabled = false;
+                motorDireitoSpeedInput.disabled = false;
+                motorEsquerdoSpeedInput.disabled = false;
+                testTimeInput.disabled = false;
+                console.log("UI habilitada."); // Log 15
+
+            } catch (error) {
+                console.error("Erro ao conectar ou interagir com BLE:", error);
+                statusElement.textContent = `Erro: ${error.message}`;
+                if (device && error.name !== 'NotFoundError' && error.message.indexOf('User cancelled') === -1) {
+                    if (device.gatt && device.gatt.connected) {
+                        device.gatt.disconnect();
+                    } else {
+                        onDisconnected(); 
+                    }
+                } else if (!device) { 
+                    onDisconnected();
+                }
+            }
+        }
+
+        async function disconnectFromESP32() {
+            if (device && device.gatt.connected) {
+                console.log("Desconectando do ESP32...");
+                
+                // Para todas as notificações
+                if (motorASpeedCharacteristic) await motorASpeedCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. Motor A:", e));
+                if (motorBSpeedCharacteristic) await motorBSpeedCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. Motor B:", e));
+                if (testTimeCharacteristic) await testTimeCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. Tempo:", e));
+                if (startStopCharacteristic) await startStopCharacteristic.stopNotifications().catch(e => console.warn("Erro ao parar notif. Start/Stop:", e));
+
+                // Remove event listeners
+                if (motorASpeedCharacteristic) motorASpeedCharacteristic.removeEventListener('characteristicvaluechanged', handleMotorASpeedNotifications);
+                if (motorBSpeedCharacteristic) motorBSpeedCharacteristic.removeEventListener('characteristicvaluechanged', handleMotorBSpeedNotifications);
+                if (testTimeCharacteristic) testTimeCharacteristic.removeEventListener('characteristicvaluechanged', handleTestTimeNotifications);
+                if (startStopCharacteristic) startStopCharacteristic.removeEventListener('characteristicvaluechanged', handleStartStopNotifications);
+
+                device.gatt.disconnect();
+            } else {
+                console.log("Nenhum dispositivo conectado para desconectar.");
+                onDisconnected(); 
+            }
+        }
+
+        async function setMotorParameters() {
+            if (!motorASpeedCharacteristic || !motorBSpeedCharacteristic || !testTimeCharacteristic) {
+                alert("Não conectado ao ESP32. Por favor, conecte primeiro.");
+                return;
+            }
+
+            let motorEsquerdo = parseInt(motorEsquerdoSpeedInput.value); // Corresponde ao Motor B no ESP32
+            let motorDireito = parseInt(motorDireitoSpeedInput.value);   // Corresponde ao Motor A no ESP32
+            let time = parseInt(testTimeInput.value);
+
+            if (isNaN(motorDireito) || motorDireito < 0 || motorDireito > 255 ||
+                isNaN(motorEsquerdo) || motorEsquerdo < 0 || motorEsquerdo > 255 ||
+                isNaN(time) || time < 100 || time > 10000) {
+                alert("Por favor, insira valores válidos: Velocidade (0-255), Tempo (100-10000 ms).");
+                return;
+            }
+
+            try {
+                await motorASpeedCharacteristic.writeValue(new TextEncoder().encode(String(motorDireito)));
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+                await motorBSpeedCharacteristic.writeValue(new TextEncoder().encode(String(motorEsquerdo)));
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+                await testTimeCharacteristic.writeValue(new TextEncoder().encode(String(time)));
+                await new Promise(resolve => setTimeout(resolve, 100)); 
+                console.log(`Parâmetros enviados: Motor Esquerdo (B): ${motorEsquerdo}, Motor Direito (A): ${motorDireito}, Tempo: ${time}ms.`);
+            } catch (error) {
+                console.error("Erro ao definir parâmetros:", error);
+                alert("Erro ao enviar parâmetros. Tente reconectar.");
+                if (device && device.gatt.connected) {
+                    device.gatt.disconnect();
+                }
+            }
+        }
+
+        async function writeStartStopCommand(command) { // "1" para iniciar, "0" para parar
+            if (!startStopCharacteristic) {
+                alert("Não conectado ao ESP32. Por favor, conecte primeiro.");
+                return;
+            }
+            try {
+                await startStopCharacteristic.writeValue(new TextEncoder().encode(String(command)));
+                console.log(`Comando Start/Stop enviado: ${command}`);
+            } catch (error) {
+                console.error("Erro ao enviar comando Start/Stop:", error);
+                alert("Erro ao enviar comando. Tente reconectar.");
+                if (device && device.gatt.connected) {
+                    device.gatt.disconnect();
+                }
+            }
+        }
+
+        // Verifica se o Web Bluetooth é suportado no carregamento da página
+        if ('bluetooth' in navigator) {
+            console.log("Web Bluetooth API suportado.");
+            statusElement.textContent = "Pronto para conectar.";
+        } else {
+            statusElement.textContent = "Web Bluetooth API NÃO suportado neste navegador. Use Chrome ou Edge.";
+            connectButton.disabled = true;
+        }
+
+    </script>
+</body>
+</html>

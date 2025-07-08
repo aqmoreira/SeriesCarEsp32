@@ -4,8 +4,9 @@
 #include <BLE2902.h>
 #include <CarEsp32.h> // Inclui a biblioteca do seu carro
 
-// Definir o nome do dispositivo BLE
-#define DEVICE_NAME "Carro_BLE_Control" // Nome descritivo para o carro
+// Definir o nome do dispositivo BLE e Tipo linha
+#define DEVICE_NAME "Carro_BLE_Velocidade" // Nome descritivo para o carro
+bool linhaPreta = false;    //Estou usando aqui linha branca, use true se tiver linha preta
 
 // UUIDs para o serviço e as características
 // Você pode gerar UUIDs aleatórios online (ex: uuidgenerator.net)
@@ -107,6 +108,7 @@ void setup() {
     carEsp32.ajustarVelocidade(velocidade);
     carEsp32.calibrarMotorA(calibragemMotorA);
     carEsp32.calibrarMotorB(calibragemMotorB);
+    carEsp32.setLinhaCorPreta(linhaPreta);
 
     // Inicializa o dispositivo BLE
     BLEDevice::init(DEVICE_NAME);
@@ -189,15 +191,15 @@ void loop() {
     }
 
     // Lógica do carro seguidor de linha (mantida do seu código)
-    if(s2 == true && s4 == false){
+    if(s2 == false && s4 == true){
         carEsp32.acionarMotorA(true, velocidade);
         carEsp32.acionarMotorB(false, velocidade);
-    } else if(s2 == false && s4 == true){
+    } else if(s2 == true && s4 == false){
         carEsp32.acionarMotorB(true, velocidade);
         carEsp32.acionarMotorA(false, velocidade);
-    } else if(s2 == true && s3 == false && s4 == true){
+    } else if(s2 == false && s3 == true && s4 == false){
         carEsp32.acionarMotor(false, false, velocidade);
-    } else if(!s1 && !s2 && !s3 && !s4 && !s5){
+    } else if(s1 && s2 && s3 && s4 && s5){
         carEsp32.pararMotor();
         delay(100);
     }
@@ -206,9 +208,9 @@ void loop() {
     int old_velocidade = velocidade; // Salva a velocidade antes de verificar os botões
 
     if(!digitalRead(SW1)){
-        velocidade = 255;
-    } else if(!digitalRead(SW2)){ // Usar else if aqui é importante para priorizar
         velocidade = 170;
+    } else if(!digitalRead(SW2)){ 
+        velocidade = 180;
     } else if(!digitalRead(SW3)){
         velocidade = 200;
     } else if(!digitalRead(SW4)){
